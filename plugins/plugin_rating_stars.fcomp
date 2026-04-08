@@ -1,0 +1,7 @@
+{
+  "name": "RATING",
+  "html": "<div class=\"rating-root\" style=\"display:flex;gap:4px;padding:4px;background:#111;border:1px solid #333;border-radius:4px;width:100%;height:100%;box-sizing:border-box;align-items:center;justify-content:center;\"><span class=\"star\" data-val=\"1\" style=\"font-size:18px;cursor:pointer;color:#555;\">★</span><span class=\"star\" data-val=\"2\" style=\"font-size:18px;cursor:pointer;color:#555;\">★</span><span class=\"star\" data-val=\"3\" style=\"font-size:18px;cursor:pointer;color:#555;\">★</span><span class=\"star\" data-val=\"4\" style=\"font-size:18px;cursor:pointer;color:#555;\">★</span><span class=\"star\" data-val=\"5\" style=\"font-size:18px;cursor:pointer;color:#555;\">★</span></div>",
+  "ai": "Рейтинг звёздами 1-5. Наведи + клик для оценки.",
+  "w": 100,
+  "ht": 35
+}

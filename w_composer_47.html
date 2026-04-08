@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>FormComposer v4.7 - Engineering Schema Edition</title>
+    <style>
+        :root { --bg: #0a0a0a; --panel: #161616; --accent: #007acc; --text: #bbb; --guide-h: #ff4444; --guide-v: #4444ff; --border: #333; --def-rad: 6px; }
+        body { margin: 0; font-family: 'Consolas', monospace; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 280px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 2000; }
+        .sidebar-scroll { flex: 1; overflow-y: auto; }
+        .section-h { padding: 10px; background: #222; font-size: 10px; border-bottom: 1px solid var(--border); color: var(--accent); text-transform: uppercase; position: sticky; top:0; z-index:10; display: flex; justify-content: space-between; align-items: center; }
+        .items-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 6px; }
+        .tool-card { background: #1e1e1e; border: 1px solid var(--border); padding: 8px; cursor: grab; text-align: center; border-radius: var(--def-rad); }
+        .tool-card label { font-size: 8px; color: #666; margin-top: 4px; display: block; pointer-events: none; }
+        .tool-preview { pointer-events: none; height: 30px; display: flex; justify-content: center; align-items: center; }
+        .tool-preview * { border: 1px solid #555; background: #333; color: #fff; border-radius: 3px; max-width: 90%; }
+        #canvas-area { display: flex; flex: 1; }
+        #ruler-top { width: 100%; height: 20px; background: #1a1a1a; border-bottom: 1px solid #333; overflow: hidden; position: relative; }
+        #ruler-top canvas { display: block; }
+        #ruler-left { width: 20px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; overflow: hidden; position: relative; }
+        #ruler-left canvas { display: block; }
+        #ruler-corner { width: 20px; height: 20px; background: #1a1a1a; border-bottom: 1px solid #333; border-right: 1px solid #333; flex-shrink: 0; }
+        #workspace { flex: 1; position: relative; overflow: auto; background: radial-gradient(#1a1a1a 1px, transparent 1px) 0 0 / 20px 20px; }
+        .guide-controls { position: absolute; left: 10px; top: 10px; z-index: 1000; display: flex; gap: 5px; }
+        .btn-g { background: #222; color: #fff; border: 1px solid #444; padding: 5px 10px; cursor: pointer; border-radius: 4px; font-size: 11px; }
+        .m-guide { position: absolute; z-index: 999; cursor: move; }
+        .m-guide-h { width: 100%; height: 2px; background: var(--guide-h); left: 0; }
+        .m-guide-v { height: 100%; width: 2px; background: var(--guide-v); top: 0; }
+        .canvas-item { position: absolute; min-width: 10px; min-height: 10px; z-index: 5; box-sizing: border-box; }
+        .canvas-item[data-selected="true"] { outline: 1px solid var(--accent); background: rgba(0,122,204,0.05); }
+        .canvas-item > *:not(.resizer) { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; box-sizing: border-box; overflow: hidden; border: 1px solid #555; border-radius: var(--def-rad); background: #111; color: inherit; pointer-events: none; }
+        .canvas-item.plugin-item > *:not(.resizer) { display: block; overflow: auto; pointer-events: auto; }
+        .plugin-item { z-index: 6; }
+        .plugin-del { position: absolute; top: 2px; right: 2px; background: #d33; border: none; color: #fff; width: 16px; height: 16px; font-size: 11px; cursor: pointer; border-radius: 2px; line-height: 16px; z-index: 100; opacity: 0; }
+        .tool-card:hover .plugin-del { opacity: 1; }
+        .resizer { width: 8px; height: 8px; background: var(--accent); position: absolute; right: -2px; bottom: -2px; cursor: nwse-resize; z-index: 10; opacity: 0; border-radius: 50%; }
+        .canvas-item:hover .resizer { opacity: 1; }
+        #inspector { width: 280px; background: var(--panel); border-left: 1px solid var(--border); padding: 12px; overflow-y: auto; font-size: 11px; }
+        .field { margin-bottom: 8px; }
+        label { display: block; color: #555; margin-bottom: 2px; font-size: 9px; text-transform: uppercase; }
+        input, textarea, select { background: #000; color: #fff; border: 1px solid var(--border); padding: 5px; width: 100%; box-sizing: border-box; border-radius: 4px; }
+        button.cmd { background: #333; color: #fff; border: 1px solid #444; padding: 8px; width: 100%; cursor: pointer; margin-top: 4px; font-weight: bold; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="section-h">FCOMP v4.7 [SCHEMA] <button onclick="importProject()" style="background:var(--accent); border:none; color:#fff; font-size:9px; padding:2px 5px; cursor:pointer;">LOAD</button> <button onclick="importPlugin()" style="background:#333; border:1px solid #444; color:#fff; font-size:9px; padding:2px 5px; cursor:pointer;" title="Import Plugin">[+PLUGIN]</button></div>
+    <div class="sidebar-scroll">
+        <div class="section-h">System & UI</div><div id="list-sys" class="items-grid"></div>
+        <div class="section-h">Custom Actions</div><div id="list-custom" class="items-grid"></div>
+        <div class="section-h">Media Unit</div><div id="list-media" class="items-grid"></div>
+        <div class="section-h">Forms & Data</div><div id="list-form" class="items-grid"></div>
+        <div id="sec-imp" class="section-h" style="display:none;">Imported</div><div id="list-imp" class="items-grid"></div>
+        <div class="section-h" id="sec-plugins" style="display:none;">Plugins <span id="plugin-count" style="font-size:8px;color:#666;"></span></div><div id="list-plugins" class="items-grid"></div>
+    </div>
+    <div style="padding:10px; background:#111;"><button class="cmd" style="background:var(--accent);" onclick="exportProject()">SAVE PROJECT HTML</button></div>
+</div>
+
+<div id="canvas-area">
+    <div style="display:flex; flex-direction:column; flex:1;">
+        <div style="display:flex;">
+            <div id="ruler-corner"></div>
+            <div id="ruler-top"><canvas id="canvas-top"></canvas></div>
+        </div>
+        <div style="display:flex; flex:1;">
+            <div id="ruler-left"><canvas id="canvas-left"></canvas></div>
+            <div id="workspace">
+                <div class="guide-controls">
+                    <button class="btn-g" onclick="addGuide('h')">H+</button>
+                    <button class="btn-g" onclick="addGuide('v')">V+</button>
+                    <button class="btn-g" onclick="undo()" title="Undo">⟲</button>
+                    <button class="btn-g" onclick="redo()" title="Redo">⟳</button>
+                    <button class="btn-g" onclick="saveState()" style="background:#007acc;">SAVE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="inspector">
+    <div class="section-h">Inspector</div>
+    <div class="field"><label>ID</label><input type="text" id="p-id" readonly></div>
+    <div class="field"><label>AI Logic (Schema Purpose)</label><textarea id="p-ai" rows="4"></textarea></div>
+    <div class="field"><label>Value / Text</label><input type="text" id="p-val"></div>
+    <div style="display:flex; gap:4px;" class="field">
+        <div style="flex:1"><label>Z-Idx</label><input type="number" id="p-z"></div>
+        <div style="flex:1"><label>Font</label><input type="number" id="p-fs"></div>
+    </div>
+    <div style="display:flex; gap:4px;" class="field">
+        <div style="flex:1"><label>BG</label><input type="color" id="p-bg"></div>
+        <div style="flex:1"><label>Border</label><input type="color" id="p-bc"></div>
+        <div style="flex:1"><label>Rad</label><input type="number" id="p-rad"></div>
+    </div>
+    <button class="cmd" onclick="cloneEl()">CLONE (Ctrl+V)</button>
+    <button class="cmd" style="background:#522; border:none;" onclick="deleteEl()">DELETE (Del)</button>
+</div>
+
+<script>
+    let selected = null; const GRID = 10; const SNAP_THRESHOLD = 15; let guides = { h: [], v: [] }; let db;
+    let undoStack = [], redoStack = [], idCounter = {};
+    const MAX_UNDO = 50;
+    let PLUGINS = {};
+
+    // Плагины живут в LIB с cat: 'plugins'. PLUGINS - для быстрого доступа.
+    const request = indexedDB.open("FComp_Schema_v47", 2);
+    request.onupgradeneeded = e => { 
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains("projects")) d.createObjectStore("projects", { keyPath: "id" });
+        if (!d.objectStoreNames.contains("plugins")) d.createObjectStore("plugins", { keyPath: "type" });
+    };
+    request.onsuccess = e => { db = e.target.result; loadPlugins(() => restoreState()); };
+
+    function loadPlugins(callback) {
+        const tx = db.transaction("plugins", "readonly");
+        tx.objectStore("plugins").getAll().onsuccess = e => {
+            const stored = e.target.result || [];
+            PLUGINS = {};
+            stored.forEach(p => {
+                if (p && p.type && p.html) {
+                    const entry = { cat: 'plugins', n: p.name, h: p.html, ai: p.ai || '', w: p.w || 100, ht: p.ht || 50 };
+                    LIB[p.type] = entry;
+                    PLUGINS[p.type] = entry;
+                }
+            });
+            renderLibrary();
+            if (callback) callback();
+        };
+    }
+
+    function savePlugin(plugin) {
+        const tx = db.transaction("plugins", "readwrite");
+        tx.objectStore("plugins").put(plugin);
+        const entry = { cat: 'plugins', n: plugin.name, h: plugin.html, ai: plugin.ai || '', w: plugin.w || 100, ht: plugin.ht || 50 };
+        LIB[plugin.type] = entry;
+        PLUGINS[plugin.type] = entry;
+        renderLibrary();
+    }
+
+    function deletePlugin(type) {
+        if (!confirm('Удалить плагин "' + (LIB[type]?.n || type) + '"?')) return;
+        // Удаляем все элементы этого плагина с холста
+        document.querySelectorAll('.canvas-item').forEach(el => {
+            if (el.dataset.type === type) el.remove();
+        });
+        const tx = db.transaction("plugins", "readwrite");
+        tx.objectStore("plugins").delete(type);
+        delete PLUGINS[type];
+        delete LIB[type];
+        renderLibrary();
+        saveState();
+    }
+
+    function importPlugin() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.fcomp,.json';
+        input.onchange = e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                try {
+                    const content = ev.target.result;
+                    const pluginType = 'plug_' + Date.now();
+                    const name = file.name.replace(/\.(fcomp|json)$/i, '').toUpperCase();
+                    let html = '<div>' + name + '</div>';
+                    let ai = 'Plugin element.';
+                    let w = 100, ht = 50;
+                    try {
+                        const parsed = JSON.parse(content);
+                        if (parsed.html) html = parsed.html;
+                        if (parsed.ai) ai = parsed.ai;
+                        if (parsed.w) w = parsed.w;
+                        if (parsed.ht) ht = parsed.ht;
+                    } catch(e) { html = content; }
+                    const plugin = { type: pluginType, name, html, ai, w, ht };
+                    savePlugin(plugin);
+                } catch(err) { alert('Plugin error: ' + err); }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    }
+
+    function getPluginData(type) {
+        return LIB[type] || PLUGINS[type];
+    }
+
+    function isPlugin(type) {
+        return type && type.startsWith('plug_');
+    }
+
+    // Инициализация File Tree плагина
+    window.ftreeInit = function(el) {
+        const root = el.querySelector('.ftree-root');
+        if (!root) return;
+        
+        const content = root.querySelector('.ftree-content');
+        const pathEl = root.querySelector('.ftree-path');
+        const statusEl = root.querySelector('.ftree-status');
+        
+        // Демо файловая система
+        const fs = {
+            '/': {
+                type: 'dir', children: {
+                    'project': { type: 'dir', children: {
+                        'index.html': { type: 'file', ext: 'html' },
+                        'style.css': { type: 'file', ext: 'css' },
+                        'app.js': { type: 'file', ext: 'js' }
+                    }},
+                    'src': { type: 'dir', children: {
+                        'main.c': { type: 'file', ext: 'c' },
+                        'utils.js': { type: 'file', ext: 'js' }
+                    }},
+                    'README.md': { type: 'file', ext: 'md' }
+                }
+            }
+        };
+        
+        let currentPath = '/';
+        let history = ['/'];
+        
+        function getNode(path) {
+            const parts = path.split('/').filter(p => p);
+            let node = fs['/'];
+            for (const p of parts) {
+                if (node && node.children && node.children[p]) {
+                    node = node.children[p];
+                } else return null;
+            }
+            return node;
+        }
+        
+        function renderPath(p) {
+            pathEl.textContent = p;
+            const node = getNode(p);
+            content.innerHTML = '';
+            
+            if (p !== '/') {
+                // Кнопка назад
+                const back = document.createElement('div');
+                back.className = 'ftree-item';
+                back.innerHTML = '<span style=\"color:#888;\">📁 ..</span>';
+                back.onclick = () => navigateUp();
+                content.appendChild(back);
+            }
+            
+            if (node && node.children) {
+                Object.keys(node.children).sort().forEach(name => {
+                    const item = node.children[name];
+                    const div = document.createElement('div');
+                    div.className = 'ftree-item';
+                    div.style.cursor = 'pointer';
+                    div.style.padding = '2px 0';
+                    
+                    if (item.type === 'dir') {
+                        div.innerHTML = `<span style=\"color:#fa0;\">📁 ${name}/</span>`;
+                        div.ondblclick = () => navigateTo(p + name + '/');
+                        div.onclick = () => selectItem(name + '/', 'dir');
+                    } else {
+                        const icon = getFileIcon(item.ext);
+                        div.innerHTML = `<span style=\"color:#0af;\">${icon} ${name}</span>`;
+                        div.ondblclick = () => openFile(name, p);
+                        div.onclick = () => selectItem(name, 'file');
+                    }
+                    content.appendChild(div);
+                });
+            }
+            
+            if (Object.keys(node?.children || {}).length === 0) {
+                content.innerHTML = '<div style=\"color:#666;\">Пустая папка</div>';
+            }
+        }
+        
+        function getFileIcon(ext) {
+            const icons = { js: '📜', html: '🌐', css: '🎨', md: '📝', c: '⚙️', json: '📋', txt: '📄' };
+            return icons[ext] || '📄';
+        }
+        
+        function navigateTo(path) {
+            currentPath = path;
+            history.push(path);
+            renderPath(path);
+            statusEl.textContent = '📁 ' + path;
+        }
+        
+        function navigateUp() {
+            if (history.length > 1) {
+                history.pop();
+                currentPath = history[history.length - 1];
+                renderPath(currentPath);
+                statusEl.textContent = '📁 ' + currentPath;
+            }
+        }
+        
+        function selectItem(name, type) {
+            statusEl.textContent = (type === 'dir' ? '📁 ' : '📄 ') + name;
+            content.querySelectorAll('.ftree-item').forEach(i => i.style.background = 'transparent');
+            event.target.closest('.ftree-item').style.background = '#222';
+        }
+        
+        function openFile(name, path) {
+            statusEl.textContent = '📝 Открыт: ' + name;
+            const ai = el.dataset.ai || '';
+            el.dataset.ai = ai + ' [file:' + name + ']';
+        }
+        
+        // CSS для items
+        if (!document.getElementById('ftree-style')) {
+            const style = document.createElement('style');
+            style.id = 'ftree-style';
+            style.textContent = `.ftree-item:hover { background: #1a1a1a; } .ftree-content { height: calc(100% - 40px); }`;
+            document.head.appendChild(style);
+        }
+        
+        root.style.display = 'flex';
+        root.style.flexDirection = 'column';
+        renderPath('/');
+    };
+
+    function getStyleManifest(inner) {
+        const c = getComputedStyle(inner);
+        return {
+            bg: c.backgroundColor, color: c.color, bc: c.borderColor, 
+            bw: c.borderWidth, bs: c.borderStyle, br: c.borderRadius, fs: c.fontSize
+        };
+    }
+
+    function applyManifestStyle(inner, s) {
+        if (!s) return;
+        inner.style.cssText = '';
+        inner.style.backgroundColor = s.bg; inner.style.color = s.color;
+        inner.style.borderColor = s.bc; inner.style.borderWidth = s.bw;
+        inner.style.borderStyle = s.bs; inner.style.borderRadius = s.br;
+        inner.style.fontSize = s.fs;
+    }
+
+    function saveState() {
+        if (!db) return;
+        const items = Array.from(document.querySelectorAll('.canvas-item')).map(el => {
+            const inner = el.children[0];
+            const m = getStyleManifest(inner);
+            const tmp = inner.cloneNode(true);
+            tmp.removeAttribute('style');
+            const content = tmp.innerHTML;
+            return {
+                id: el.id, type: el.dataset.type, ai: el.dataset.ai,
+                x: el.style.left, y: el.style.top, w: el.offsetWidth, h: el.offsetHeight, z: el.style.zIndex || '5',
+                content: content, m: m
+            };
+        });
+        const mGuides = Array.from(document.querySelectorAll('.m-guide')).map(g => ({ t: g.classList.contains('m-guide-h') ? 'h' : 'v', p: g.classList.contains('m-guide-h') ? g.style.top : g.style.left }));
+        const tx = db.transaction("projects", "readwrite");
+        tx.objectStore("projects").put({ id: "current", items, guides: mGuides });
+    }
+
+    function restoreState() {
+        if (!db) return;
+        const tx = db.transaction("projects", "readonly");
+        tx.objectStore("projects").get("current").onsuccess = e => {
+            const data = e.target.result;
+            const ws = document.getElementById('workspace');
+            ws.querySelectorAll('.canvas-item, .m-guide').forEach(el => el.remove());
+            undoStack = []; redoStack = []; idCounter = {};
+            if (data && data.items) {
+                data.items.forEach(it => {
+                    const type = it.type || (it.id ? it.id.split('_')[0] : 'u-box');
+                    const num = parseInt((it.id || '0').split('_').pop()) || 0;
+                    if (!idCounter[type] || idCounter[type] < num) idCounter[type] = num;
+                });
+            }
+            if (data && data.guides) data.guides.forEach(gd => addGuide(gd.t, parseInt(gd.p)));
+            if (data && data.items) data.items.forEach(it => {
+                const div = document.createElement('div');
+                div.className = 'canvas-item'; div.id = it.id;
+                div.style.left = it.x; div.style.top = it.y;
+                div.style.width = it.w + 'px'; div.style.height = it.h + 'px'; div.style.zIndex = it.z;
+                div.dataset.type = it.type; div.dataset.ai = it.ai || '';
+                
+                const pData = getPluginData(it.type);
+                if (pData) {
+                    div.classList.add('plugin-item');
+                    div.innerHTML = pData.h || it.content || '<div>PLUGIN</div>';
+                } else {
+                    const libItem = LIB[it.type];
+                    if (libItem && libItem.h) {
+                        div.innerHTML = libItem.h;
+                    } else if (it.content) {
+                        div.innerHTML = '<div>' + it.content + '</div>';
+                    } else {
+                        div.innerHTML = '<div></div>';
+                    }
+                }
+                div.appendChild(document.createElement('div')).className = 'resizer';
+                applyManifestStyle(div.children[0], it.m);
+                bindItem(div); ws.appendChild(div);
+                
+                // Инициализация плагинов при восстановлении
+                if (pData && pData.h && pData.h.includes('ftree-root')) {
+                    setTimeout(() => window.ftreeInit && window.ftreeInit(div), 100);
+                }
+            });
+            updateGuidesArray(); pushUndo();
+        };
+    }
+
+    const LIB = {
+        's-new': { cat: 'sys', n: 'NEW', h: '<button>📄</button>', ai: 'Reset system.' },
+        's-open': { cat: 'sys', n: 'OPEN', h: '<button>📂</button>', ai: 'Open project.' },
+        's-save': { cat: 'sys', n: 'SAVE', h: '<button>💾</button>', ai: 'Save state.' },
+        's-undo': { cat: 'sys', n: 'UNDO', h: '<button>⟲</button>', ai: 'Undo.' },
+        's-redo': { cat: 'sys', n: 'REDO', h: '<button>⟳</button>', ai: 'Redo.' },
+        's-find': { cat: 'sys', n: 'FIND', h: '<button>🔍</button>', ai: 'Search.' },
+        'u-display': { cat: 'sys', n: 'ЭКРАН', h: '<div style="background:#000;color:#0f0;border:1px solid #0f0;font-family:monospace;font-size:10px;padding:4px;">OUT></div>', ai: 'Terminal output.' },
+        'u-layer': { cat: 'sys', n: 'LAYER BOX', h: '<div style="border:2px solid #555;background:#111;"></div>', ai: 'Background layer.' },
+        'u-box': { cat: 'sys', n: 'BOX', h: '<div style="border:1px solid #444"></div>', ai: 'Container.' },
+        'u-tab': { cat: 'sys', n: 'TABS', h: '<div style="display:flex;background:#333;font-size:8px;"><div style="padding:2px 4px;background:#444">Tab</div></div>', ai: 'Tabs.' },
+        'u-list': { cat: 'sys', n: 'LIST', h: '<div style="border:1px solid #333;font-size:8px;text-align:left">Item</div>', ai: 'List.' },
+        'u-sep': { cat: 'sys', n: 'SEP', h: '<div style="width:100%;height:1px;background:#444"></div>', ai: 'Line.' },
+        'u-status': { cat: 'sys', n: 'STATUS', h: '<div style="background:#007acc;font-size:9px;color:#fff;">READY</div>', ai: 'Status bar.' },
+        'c-act': { cat: 'custom', n: 'ACTION BTN', h: '<button>ACTION</button>', ai: 'Custom action.' },
+        'c-icon': { cat: 'custom', n: 'ICON BTN', h: '<button>💠</button>', ai: 'Icon click.' },
+        'm-play': { cat: 'media', n: 'PLAY', h: '<button>▶</button>', ai: 'Play.' },
+        'm-pause': { cat: 'media', n: 'PAUSE', h: '<button>⏸</button>', ai: 'Pause.' },
+        'm-stop': { cat: 'media', n: 'STOP', h: '<button>■</button>', ai: 'Stop.' },
+        'm-next': { cat: 'media', n: 'NEXT', h: '<button>⏭</button>', ai: 'Next.' },
+        'm-prev': { cat: 'media', n: 'PREV', h: '<button>⏮</button>', ai: 'Prev.' },
+        'm-vol': { cat: 'media', n: 'VOLUME', h: '<input type="range">', ai: 'Vol.' },
+        'm-time': { cat: 'media', n: 'TIMER', h: '<div style="color:#0f0;font-size:10px">00:00</div>', ai: 'Clock.' },
+        'm-progress': { cat: 'media', n: 'PROGRESS', h: '<div style="background:#222;border:1px solid #444;"><div style="width:30%;height:100%;background:#007acc;"></div></div>', ai: 'Progress.' },
+        'f-inp': { cat: 'form', n: 'INPUT', h: '<input type="text" placeholder="...">', ai: 'Input field.' },
+        'f-area': { cat: 'form', n: 'TEXTAREA', h: '<textarea></textarea>', ai: 'Multiline.' },
+        'f-chk': { cat: 'form', n: 'CHECK', h: '<input type="checkbox">', ai: 'Check.' },
+        'f-rad': { cat: 'form', n: 'RADIO', h: '<input type="radio">', ai: 'Radio.' },
+        'f-sel': { cat: 'form', n: 'SELECT', h: '<select><option>...</option></select>', ai: 'Select.' },
+        'f-col': { cat: 'form', n: 'COLOR', h: '<input type="color">', ai: 'Color picker.' }
+    };
+
+    function addGuide(type, pos) {
+        const g = document.createElement('div'); g.className = `m-guide m-guide-${type}`;
+        if (type === 'h') g.style.top = (pos || 100) + 'px';
+        else g.style.left = (pos || 100) + 'px';
+        g.onmousedown = e => { let sx = e.clientX, sy = e.clientY; document.onmousemove = m => { type === 'h' ? g.style.top = (g.offsetTop + (m.clientY - sy)) + 'px' : g.style.left = (g.offsetLeft + (m.clientX - sx)) + 'px'; sx = m.clientX; sy = m.clientY; }; document.onmouseup = () => { document.onmousemove = null; updateGuidesArray(); saveState(); }; };
+        g.ondblclick = () => { g.remove(); updateGuidesArray(); saveState(); }; document.getElementById('workspace').appendChild(g); updateGuidesArray(); return g;
+    }
+
+    function updateGuidesArray() { guides.h = Array.from(document.querySelectorAll('.m-guide-h')).map(el => el.offsetTop); guides.v = Array.from(document.querySelectorAll('.m-guide-v')).map(el => el.offsetLeft); }
+
+    function getSnapshot() {
+        return JSON.stringify({
+            items: Array.from(document.querySelectorAll('.canvas-item')).map(el => {
+                const inner = el.children[0]; const m = getStyleManifest(inner);
+                const tmp = inner.cloneNode(true); tmp.removeAttribute('style');
+                return { id: el.id, type: el.dataset.type, ai: el.dataset.ai, x: el.style.left, y: el.style.top, w: el.offsetWidth, h: el.offsetHeight, z: el.style.zIndex, content: tmp.innerHTML, m: m };
+            }),
+            guides: Array.from(document.querySelectorAll('.m-guide')).map(g => ({ t: g.classList.contains('m-guide-h') ? 'h' : 'v', p: g.classList.contains('m-guide-h') ? g.style.top : g.style.left }))
+        });
+    }
+
+    function pushUndo() {
+        undoStack.push(getSnapshot());
+        if (undoStack.length > MAX_UNDO) undoStack.shift();
+        redoStack = [];
+    }
+
+    function undo() {
+        if (undoStack.length < 2) return;
+        redoStack.push(undoStack.pop());
+        restoreSnapshot(JSON.parse(undoStack[undoStack.length - 1]));
+    }
+
+    function redo() {
+        if (redoStack.length === 0) return;
+        const snap = JSON.parse(redoStack.pop());
+        undoStack.push(JSON.stringify(snap));
+        restoreSnapshot(snap);
+    }
+
+    function restoreSnapshot(data) {
+        const ws = document.getElementById('workspace');
+        ws.querySelectorAll('.canvas-item, .m-guide').forEach(el => el.remove());
+        if (data.guides) data.guides.forEach(gd => addGuide(gd.t, parseInt(gd.p)));
+        data.items.forEach(it => {
+            const div = document.createElement('div'); div.className = 'canvas-item'; div.id = it.id;
+            div.style.left = it.x; div.style.top = it.y; div.style.width = it.w + 'px'; div.style.height = it.h + 'px'; div.style.zIndex = it.z;
+            div.dataset.type = it.type; div.dataset.ai = it.ai || '';
+            
+            const pData = getPluginData(it.type);
+            if (pData) {
+                div.classList.add('plugin-item');
+                div.innerHTML = pData.h || it.content || '<div>PLUGIN</div>';
+            } else {
+                const libItem = LIB[it.type];
+                if (libItem && libItem.h) {
+                    div.innerHTML = libItem.h;
+                } else if (it.content) {
+                    div.innerHTML = '<div>' + it.content + '</div>';
+                } else {
+                    div.innerHTML = '<div></div>';
+                }
+            }
+            div.appendChild(document.createElement('div')).className = 'resizer';
+            applyManifestStyle(div.children[0], it.m); bindItem(div); ws.appendChild(div);
+        });
+        updateGuidesArray(); selected = null;
+        saveState();
+    }
+
+    function getNextId(type) {
+        if (!idCounter[type]) idCounter[type] = 0;
+        idCounter[type]++;
+        return type + '_' + idCounter[type];
+    }
+
+    function createInstance(type, x, y) {
+        pushUndo();
+        const id = getNextId(type);
+        const div = document.createElement('div'); div.className = 'canvas-item'; div.id = id;
+        div.style.left = x + 'px'; div.style.top = y + 'px';
+        
+        const pData = getPluginData(type);
+        if (pData) {
+            div.classList.add('plugin-item');
+            div.style.width = (pData.w || 100) + 'px';
+            div.style.height = (pData.ht || 50) + 'px';
+            div.dataset.ai = pData.ai;
+            div.innerHTML = pData.h + '<div class="resizer"></div>';
+        } else if (type === 'u-layer') {
+            div.style.width = '200px'; div.style.height = '150px';
+            div.dataset.ai = LIB[type].ai;
+            div.innerHTML = LIB[type].h + '<div class="resizer"></div>';
+        } else {
+            div.style.width = '80px'; div.style.height = '35px';
+            div.dataset.ai = LIB[type].ai;
+            div.innerHTML = LIB[type].h + '<div class="resizer"></div>';
+        }
+        div.dataset.type = type;
+        
+        // Инициализация плагинов
+        if (pData && pData.h && pData.h.includes('ftree-root')) {
+            setTimeout(() => window.ftreeInit && window.ftreeInit(div), 50);
+        }
+        
+        bindItem(div); document.getElementById('workspace').appendChild(div); select(div); saveState();
+    }
+
+    function bindItem(el) {
+        let moved = false;
+        el.onmousedown = e => {
+            if (e.target.className === 'resizer') { resizeEl(el, e); return; }
+            pushUndo(); moved = false;
+            select(el); let sx = e.clientX, sy = e.clientY;
+            document.onmousemove = m => {
+                moved = true;
+                let nx = el.offsetLeft + (m.clientX - sx), ny = el.offsetTop + (m.clientY - sy);
+                if (m.ctrlKey) { guides.h.forEach(gh => { if (Math.abs(ny - gh) < SNAP_THRESHOLD) ny = gh; }); guides.v.forEach(gv => { if (Math.abs(nx - gv) < SNAP_THRESHOLD) nx = gv; }); }
+                el.style.left = nx + 'px'; el.style.top = ny + 'px'; sx = m.clientX; sy = m.clientY;
+            };
+            document.onmouseup = () => { document.onmousemove = null; if(moved) saveState(); };
+        };
+    }
+
+    function resizeEl(el, e) { pushUndo(); let sw = el.offsetWidth, sh = el.offsetHeight, sx = e.clientX, sy = e.clientY; document.onmousemove = m => { el.style.width = (sw + (m.clientX - sx)) + 'px'; el.style.height = (sh + (m.clientY - sy)) + 'px'; }; document.onmouseup = () => { document.onmousemove = null; saveState(); }; }
+
+    function select(el) {
+        if(selected) selected.dataset.selected = "false"; selected = el; el.dataset.selected = "true";
+        const i = el.children[0]; document.getElementById('p-id').value = el.id; document.getElementById('p-ai').value = el.dataset.ai;
+        document.getElementById('p-val').value = (i.tagName === 'INPUT' || i.tagName === 'TEXTAREA') ? i.value : i.innerText;
+        document.getElementById('p-z').value = el.style.zIndex || 5; document.getElementById('p-fs').value = parseInt(getComputedStyle(i).fontSize);
+        document.getElementById('p-bg').value = rgb2hex(getComputedStyle(i).backgroundColor); document.getElementById('p-bc').value = rgb2hex(getComputedStyle(i).borderColor); document.getElementById('p-rad').value = parseInt(getComputedStyle(i).borderRadius);
+    }
+
+    function deleteEl() { if(selected) { pushUndo(); selected.remove(); selected = null; saveState(); } }
+    function cloneEl() { if(selected) { pushUndo(); const id = getNextId(selected.dataset.type); const div = document.createElement('div'); div.className = 'canvas-item'; div.id = id; div.style.left = (selected.offsetLeft + 15) + 'px'; div.style.top = (selected.offsetTop + 15) + 'px'; div.style.width = selected.style.width; div.style.height = selected.style.height; div.style.zIndex = selected.style.zIndex || 5; div.dataset.type = selected.dataset.type; div.dataset.ai = selected.dataset.ai; const si = selected.children[0]; const inner = si.cloneNode(true); inner.style.cssText = si.style.cssText; div.appendChild(inner); div.appendChild(document.createElement('div')).className = 'resizer'; bindItem(div); document.getElementById('workspace').appendChild(div); select(div); saveState(); } }
+
+    function exportProject() {
+        saveState(); const items = Array.from(document.querySelectorAll('.canvas-item')).map(el => {
+            const i = el.children[0]; return { id: el.id, type: el.dataset.type, ai: el.dataset.ai, x: el.style.left, y: el.style.top, w: el.offsetWidth, h: el.offsetHeight, z: el.style.zIndex, content: i.innerHTML, m: getStyleManifest(i) };
+        });
+        const gds = Array.from(document.querySelectorAll('.m-guide')).map(g => ({ t: g.classList.contains('m-guide-h') ? 'h' : 'v', p: g.classList.contains('m-guide-h') ? g.style.top : g.style.left }));
+        const schema = { v: "4.5", items, guides: gds, timestamp: Date.now() };
+        let html = `\n<script id="fcomp-manifest" type="application/json">${JSON.stringify(schema)}<\/script>\n`;
+        html += `<div id="ui-root" style="position:relative; width:100%; height:100vh; background:#000; overflow:hidden;">\n`;
+        document.querySelectorAll('.canvas-item').forEach(el => {
+            const i = el.children[0]; const m = getStyleManifest(i);
+            const s = `position:absolute;left:${el.style.left};top:${el.style.top};width:${el.offsetWidth}px;height:${el.offsetHeight}px;z-index:${el.style.zIndex};background-color:${m.bg};color:${m.color};border:${m.bw} ${m.bs} ${m.bc};border-radius:${m.br};font-size:${m.fs};display:flex;justify-content:center;align-items:center;`;
+            const safeAi = (el.dataset.ai || '').replace(/"/g, '&quot;');
+            html += `  ${i.outerHTML.replace('>', ` id="${el.id}" data-type="${el.dataset.type}" data-ai="${safeAi}" style="${s}">`)}\n`;
+        });
+        html += "</div>"; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], {type: 'text/html'})); a.download = 'schema_v45.html'; a.click();
+    }
+
+    function importProject() {
+        const input = document.createElement('input'); input.type = 'file';
+        input.onchange = e => {
+            const reader = new FileReader(); reader.onload = ev => {
+                const doc = new DOMParser().parseFromString(ev.target.result, 'text/html');
+                const manifest = JSON.parse(doc.getElementById('fcomp-manifest')?.textContent || "{}");
+                if (!manifest.items) return;
+                const ws = document.getElementById('workspace'); ws.querySelectorAll('.canvas-item, .m-guide').forEach(el => el.remove());
+                if (manifest.guides) manifest.guides.forEach(gd => addGuide(gd.t, parseInt(gd.p)));
+                manifest.items.forEach(it => {
+                    const div = document.createElement('div'); div.className = 'canvas-item'; div.id = it.id;
+                    div.style.left = it.x; div.style.top = it.y; div.style.width = it.w + 'px'; div.style.height = it.h + 'px'; div.style.zIndex = it.z;
+                    div.dataset.type = it.type; div.dataset.ai = it.ai;
+                    
+                    const pData = getPluginData(it.type);
+                    if (pData) {
+                        div.classList.add('plugin-item');
+                        div.innerHTML = pData.h || it.content || '<div>PLUGIN</div>';
+                    } else {
+                        const libItem = LIB[it.type];
+                        if (libItem && libItem.h) {
+                            div.innerHTML = libItem.h;
+                        } else if (it.content) {
+                            div.innerHTML = '<div>' + it.content + '</div>';
+                        } else {
+                            div.innerHTML = '<div></div>';
+                        }
+                    }
+                    div.appendChild(document.createElement('div')).className = 'resizer';
+                    applyManifestStyle(div.children[0], it.m); bindItem(div); ws.appendChild(div);
+                });
+                updateGuidesArray(); saveState();
+            }; reader.readAsText(e.target.files[0]);
+        }; input.click();
+    }
+
+    function importItems() {
+        const input = document.createElement('input'); input.type = 'file'; input.multiple = true;
+        input.onchange = e => {
+            Array.from(e.target.files).forEach(file => {
+                const reader = new FileReader(); reader.onload = ev => {
+                    const name = file.name.split('.')[0].toUpperCase(); LIB['imp-'+name] = { cat: 'imp', n: name, h: ev.target.result, ai: 'Imported.' };
+                    document.getElementById('sec-imp').style.display = 'block'; renderLibrary();
+                }; reader.readAsText(file);
+            });
+        }; input.click();
+    }
+
+    function renderLibrary() { 
+        document.querySelectorAll('.items-grid').forEach(g => g.innerHTML = ''); 
+        let pluginCount = 0;
+        for (let k in LIB) { 
+            const card = document.createElement('div'); 
+            card.className = 'tool-card'; 
+            card.style = 'position:relative;';
+            const isPlugin = LIB[k].cat === 'plugins';
+            if (isPlugin) {
+                card.ondblclick = () => deletePlugin(k);
+                card.title = 'Двойной клик - удалить плагин';
+            }
+            card.innerHTML = `${isPlugin ? '<span onclick="deletePlugin(\''+k+'\');event.stopPropagation()" style="position:absolute;top:2px;right:2px;cursor:pointer;color:#f55;font-size:12px;z-index:10;">✕</span>' : ''}<div class="tool-preview">${LIB[k].h}</div><label>${LIB[k].n}</label>`; 
+            card.draggable = true; 
+            card.ondragstart = e => e.dataTransfer.setData('type', k); 
+            const target = document.getElementById('list-' + LIB[k].cat); 
+            if (target) { target.appendChild(card); if (isPlugin) pluginCount++; }
+        }
+        const secPlugins = document.getElementById('sec-plugins');
+        const countEl = document.getElementById('plugin-count');
+        if (secPlugins) secPlugins.style.display = pluginCount > 0 ? 'flex' : 'none';
+        if (countEl) countEl.textContent = `[${pluginCount}]`;
+    }
+    function rgb2hex(rgb) { const res = rgb.match(/\d+/g); return res ? "#" + res.slice(0,3).map(x => parseInt(x).toString(16).padStart(2, '0')).join('') : '#000000'; }
+    function updateRulers() {
+        const ws = document.getElementById('workspace');
+        const ct = document.getElementById('canvas-top');
+        const cl = document.getElementById('canvas-left');
+        const rt = document.getElementById('ruler-top');
+        const rl = document.getElementById('ruler-left');
+        ct.width = ws.clientWidth; ct.height = 20;
+        cl.width = 20; cl.height = ws.clientHeight;
+        const ctxT = ct.getContext('2d');
+        const ctxL = cl.getContext('2d');
+        ctxT.fillStyle = '#1a1a1a'; ctxT.fillRect(0, 0, ct.width, ct.height);
+        ctxL.fillStyle = '#1a1a1a'; ctxL.fillRect(0, 0, cl.width, cl.height);
+        ctxT.strokeStyle = '#444'; ctxL.strokeStyle = '#444';
+        ctxT.fillStyle = '#666'; ctxL.fillStyle = '#666';
+        ctxT.font = '8px Consolas'; ctxL.font = '8px Consolas';
+        for (let i = 0; i <= 3000; i += 10) {
+            const major = i % 50 === 0;
+            const len = major ? 10 : 5;
+            const x = i - ws.scrollLeft;
+            const y = i - ws.scrollTop;
+            if (x >= 0 && x <= ct.width) {
+                ctxT.beginPath(); ctxT.moveTo(x, 20 - len); ctxT.lineTo(x, 20); ctxT.stroke();
+                if (major) ctxT.fillText(i, x + 2, 12);
+            }
+            if (y >= 0 && y <= cl.height) {
+                ctxL.beginPath(); ctxL.moveTo(20 - len, y); ctxL.lineTo(20, y); ctxL.stroke();
+                if (major) { ctxL.save(); ctxL.translate(10, y + 2); ctxL.rotate(Math.PI/2); ctxL.fillText(i, 0, 0); ctxL.restore(); }
+            }
+        }
+    }
+    function setupGlobalEvents() {
+        document.onkeydown = e => { if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') { if (e.ctrlKey && e.key === 'z') undo(); else if (e.ctrlKey && e.key === 'y') redo(); else if (e.ctrlKey && e.key === 'v') cloneEl(); if (e.key === 'Delete' || e.key === 'Backspace') deleteEl(); } };
+        const sync = (id, prop, isStyle=true) => { document.getElementById(id).oninput = e => { if(!selected) return; pushUndo(); const i = selected.children[0]; if(!isStyle) { if(prop==='ai') selected.dataset.ai = e.target.value; else if(i.tagName==='INPUT'||i.tagName==='TEXTAREA') i.value=e.target.value; else i.innerText=e.target.value; } else { if(prop==='zIndex') selected.style.zIndex = e.target.value; else i.style[prop] = (prop==='fontSize'||prop==='borderRadius') ? e.target.value+'px' : e.target.value; } saveState(); }; };
+        sync('p-ai','ai',false); sync('p-val','val',false); sync('p-z','zIndex'); sync('p-fs','fontSize'); sync('p-bg','backgroundColor'); sync('p-bc','borderColor'); sync('p-rad','borderRadius');
+    }
+    window.onload = () => { renderLibrary(); const ws = document.getElementById('workspace'); ws.ondragover = e => e.preventDefault(); ws.ondrop = e => { e.preventDefault(); const t = e.dataTransfer.getData('type'); if (LIB[t] || PLUGINS[t]) { const rect = ws.getBoundingClientRect(); createInstance(t, e.clientX - rect.left + ws.scrollLeft, e.clientY - rect.top + ws.scrollTop); } }; ws.onscroll = () => updateRulers(); window.onresize = () => updateRulers(); setupGlobalEvents(); updateRulers(); 
+        // Закрытие dropdown плагинов при клике вне
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.fmenu-root') && !e.target.closest('.ftree-root')) {
+                document.querySelectorAll('.fmenu-drop').forEach(d => d.style.display = 'none');
+                document.querySelectorAll('.ftree-drop') && document.querySelectorAll('.ftree-drop').forEach(d => d.style.display = 'none');
+            }
+        });
+    };
+</script>
+</body>
+</html>
