@@ -4,6 +4,15 @@ FComp v4.7 (FormComposer) is a revolutionary "Architecture-First Prompting" meth
 
 # 🛠 FCOMP v4.7: Architecture-First Prompting
 
+**Visual DSL → AI-Ready Manifest → Code Generation**
+
+Не конструктор форм. Визуальный компилятор архитектуры.
+
+- Экспорт → JSON-манифест с `data-ai` (семантика + связи)
+- Экономия токенов: 300 строк манифеста вместо 2000+ кода
+- Точечные правки: `cli_ai "patch <ID>: fix scroll"`
+- Zero dependencies. Один HTML-файл. Работает оффлайн.
+
 ### "Самый лучший промт — это тот, который уже наполовину решает задачу."
 
 ## 🧩 Причина появления (Pain Relief)
